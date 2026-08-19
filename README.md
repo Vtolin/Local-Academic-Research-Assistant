@@ -8,7 +8,7 @@ Local RAG assistant over your PDF/DOCX library, running entirely against a local
 ### Prerequisites
 - **Python 3.9+** (tested with 3.13)
 - **Ollama** installed and running locally (download from [ollama.com](https://ollama.com))
-- **At least 8GB VRAM** (the more the better) – adjust models in `config.py` if you have limited resources.
+- **At least 8GB VRAM with 16gb System RAM** (the more the better) – adjust models in `config.py` if you have limited resources.
 
 ### 1. Clone or download the repository
 ```bash
