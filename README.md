@@ -8,7 +8,7 @@ Local RAG assistant over your PDF library, running entirely against a local Olla
 ### Prerequisites
 - **Python 3.9+** (tested with 3.13)
 - **Ollama** installed and running locally (download from [ollama.com](https://ollama.com))
-- **At least 8GB RAM** (more recommended) – the 7B/14B models require VRAM/CPU offload; adjust models in `config.py` if you have limited resources.
+- **At least 8GB VRAM** (the more the better) – adjust models in `config.py` if you have limited resources.
 
 ### 1. Clone or download the repository
 ```bash
@@ -18,7 +18,7 @@ cd local-academic-research-assistant
 
 ### 2. Choose your Python environment
 
-#### Option A: Virtual environment (recommended)
+#### Option A: Virtual environment 
 ```bash
 python -m venv venv
 source venv/bin/activate        # Linux/macOS
@@ -26,7 +26,7 @@ source venv/bin/activate        # Linux/macOS
 venv\Scripts\activate           # Windows
 ```
 
-#### Option B: System Python (not recommended but possible)
+#### Option B: System Python 
 Skip the venv commands and install packages globally.
 
 ### 3. Install dependencies
@@ -37,8 +37,8 @@ pip install -r requirements.txt
 ### 4. Pull the required Ollama models
 The system uses two models (configurable in `config.py`):
 - **Embedding model:** `nomic-embed-text`
-- **Extraction model (fast, 4B):** `qwen3.5:4b` - you can also use `qwen2.5:7b` if you have atleast 6gb vram
-- **Synthesis model (heavy, 7B):** `qwen2.5:7b` – you can also use `qwen3:14b` if your hardware allows (adjust `SYNTHESIS_MODEL` in `config.py`).
+- **Extraction model (fast but not as accurate as larger models, 4B):** `qwen3.5:4b` - you can also use `qwen2.5:7b` (reccomended) if you have atleast 8gb vram (can run on 6gb but may be slower)
+- **Synthesis model (quite heavy if you have less than 6gb vram, 7B):** `qwen2.5:7b` – you can also use `qwen3:14b` (12gb vram reccomended, if you have 8gb then you can use 7B or sacrifice speed with partial offloading) if your hardware allows (adjust `SYNTHESIS_MODEL` in `config.py`).
 
 Pull them:
 ```bash
@@ -47,7 +47,7 @@ ollama pull qwen3.5:4b
 ollama pull qwen2.5:7b
 ```
 
-> If you are on a GPU‑poor machine, you can reduce model sizes (e.g., `qwen2.5:7b` → `qwen3.5:4b`) but quality will drop.
+> If you are on a GPU‑poor machine, you can reduce model sizes (e.g., `qwen2.5:7b` → `qwen3.5:4b`) but quality will drop noticeably.
 
 ### 5. Prepare your PDF library
 Create a folder named `pfolder` in the project root (or change `DOC_FOLDER` in `config.py`). Place your PDF files inside (subdirectories are supported).
@@ -108,7 +108,7 @@ All tunable parameters live in `config.py`. Key settings:
 - **Ollama must be running** before you start the assistant. The system expects the default `http://localhost:11434`.
 - **Reindex after major updates:** If you update the code (especially ingestion or metadata extraction), run `reindex` from the prompt to rebuild the vector store with the new logic.
 - **Citation format:** Currently style‑agnostic (`filename, Page N, ¶ 42 (Section; Jurisdiction; Year)`). You can change the format in `research_trail.py` (`format_citation`).
-- **Memory usage:** The 14B synthesis model may be heavy. Reduce `SYNTHESIS_MODEL` to `qwen2.5:7b` (or smaller) if you encounter out‑of‑memory errors.
+- **Memory usage:** The 14B synthesis model may be heavy. Reduce `SYNTHESIS_MODEL` to `qwen2.5:7b` (or smaller) if you encounter out‑of‑memory errors or slow generations.
 
 ---
 
