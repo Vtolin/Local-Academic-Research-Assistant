@@ -1,0 +1,10 @@
+ollama
+langchain
+langchain-community
+langchain-text-splitters
+langchain-chroma
+langchain-ollama
+chromadb
+pymupdf
+rank_bm25
+flashrank
