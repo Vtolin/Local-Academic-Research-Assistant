@@ -14,8 +14,9 @@ paragraph [42]):
     Commonwealth/international convention) or pilcrow/spelled-out
     (¶ 42, para. 42, paragraph 42).
   - Civil-law statute articles (Indonesia and other civil-law systems):
-    "Pasal N" (Article N), optionally with "ayat (M)" (paragraph/clause M)
-    - e.g. "Pasal 5 ayat (2)".
+    "Pasal N" (Article N), optionally with "ayat (M)" (paragraph/clause M),
+    "huruf X" (letter X - e.g. "Pasal 5 ayat (2) huruf a"), and article
+    chains joined with "jo."/"juncto" ("Pasal 5 jo. Pasal 7").
 
 Both are deliberately conservative. A bare leading number ("42. The
 claimant submits...") is NOT treated as a judgment-paragraph marker, even
@@ -25,7 +26,8 @@ own numbered-heading convention without more context than a single chunk
 provides. Multiple distinct Pasal numbers found in one chunk are listed
 rather than paired with a specific ayat, since associating the right ayat
 to the right Pasal reliably would need positional analysis this
-chunk-level heuristic doesn't attempt.
+chunk-level heuristic doesn't attempt (a huruf is only appended when the
+chunk contains exactly one Pasal, for the same reason).
 
 Every chunk gets tagged with a 'pinpoint' metadata string if either
 convention was found - Pasal/ayat takes priority if both somehow appear
@@ -40,6 +42,22 @@ _BRACKET_RE = re.compile(r"\[(\d{1,4})\]")
 _PILCROW_RE = re.compile(r"(?:¶|para(?:graph)?\.?)\s*(\d{1,4})", re.IGNORECASE)
 _PASAL_RE = re.compile(r"\bpasal\s+(\d{1,4}[a-zA-Z]?)\b", re.IGNORECASE)
 _AYAT_RE = re.compile(r"\bayat\s*\(?(\d{1,3})\)?", re.IGNORECASE)
+
+# "huruf a" / "huruf (a)" - a bare letter token (or parenthesized letter)
+# after "huruf". The (?!\w) guard keeps ordinary phrases like "huruf
+# kapital" (capital letter) from matching a stray "k".
+_HURUF_RE = re.compile(
+    r"\bhuruf\s*(?:\(([a-zA-Z])\)|([a-zA-Z])(?!\w))", re.IGNORECASE
+)
+
+# Article chains: "Pasal 5 jo. Pasal 7" / "Pasal 5 juncto Pasal 7" - the
+# standard Indonesian way of citing a provision read together with
+# another. Only the first chain in a chunk is used (see module docstring
+# on positional analysis).
+_PASAL_JO_RE = re.compile(
+    r"\bpasal\s+(\d{1,4}[a-zA-Z]?)\s*(?:jo\.|juncto)\s*pasal\s+(\d{1,4}[a-zA-Z]?)",
+    re.IGNORECASE,
+)
 
 
 def find_paragraph_markers(text):
@@ -60,6 +78,22 @@ def find_pasal_markers(text):
     return pasal, ayat
 
 
+def find_huruf_markers(text):
+    """Sub-article letter markers ("huruf a"), lowercase, in the order
+    they appear. See module docstring for when they're actually used."""
+    return [m.group(1) or m.group(2) for m in _HURUF_RE.finditer(text)]
+
+
+def find_pasal_juncto(text):
+    """A "Pasal X jo. Pasal Y" chain, or None if the chunk contains none.
+    Takes priority over the plain Pasal list in tag_chunks_with_pinpoints,
+    since "Pasal 5, 7" would lose the jo. relationship."""
+    m = _PASAL_JO_RE.search(text)
+    if not m:
+        return None
+    return f"Pasal {m.group(1)} jo. Pasal {m.group(2)}"
+
+
 def format_pinpoint(numbers):
     """Turn found judgment-paragraph numbers into a citation-ready
     pinpoint string. One number -> '¶ 42'. Several -> the min-max range
@@ -73,12 +107,14 @@ def format_pinpoint(numbers):
     return f"¶ {lo}" if lo == hi else f"¶¶ {lo}-{hi}"
 
 
-def format_pasal_pinpoint(pasal_numbers, ayat_numbers):
+def format_pasal_pinpoint(pasal_numbers, ayat_numbers, huruf_letters=None):
     """Turn found Pasal/ayat markers into a citation-ready string. One
-    Pasal -> 'Pasal 5' (+ ' ayat (2)' / ' ayat (2, 3)' if ayat markers were
-    also found). Several distinct Pasal numbers -> just listed ('Pasal 5,
-    8'), without attempting to pair specific ayat numbers to specific
-    Pasal numbers - see module docstring for why."""
+    Pasal -> 'Pasal 5' (+ ' ayat (2)' / ' ayat (2, 3)' if ayat markers
+    were also found, + ' huruf a' if exactly one Pasal and one or more
+    huruf letters were found). Several distinct Pasal numbers -> just
+    listed ('Pasal 5, 8'), without attempting to pair specific ayat or
+    huruf markers to specific Pasal numbers - see module docstring for
+    why."""
     if not pasal_numbers:
         return None
     unique_pasal = list(dict.fromkeys(pasal_numbers))  # dedupe, keep first-seen order
@@ -87,18 +123,24 @@ def format_pasal_pinpoint(pasal_numbers, ayat_numbers):
 
     base = f"Pasal {unique_pasal[0]}"
     unique_ayat = list(dict.fromkeys(ayat_numbers))
-    if not unique_ayat:
-        return base
-    return f"{base} ayat ({', '.join(unique_ayat)})"
+    if unique_ayat:
+        base += f" ayat ({', '.join(unique_ayat)})"
+    if huruf_letters:
+        unique_huruf = list(dict.fromkeys(huruf_letters))
+        base += f" huruf {', '.join(unique_huruf)}"
+    return base
 
 
 def tag_chunks_with_pinpoints(chunks):
     """Mutates `chunks` in place, adding metadata['pinpoint'] to any chunk
-    whose text contains a detected marker (Pasal/ayat checked first, then
-    bracket/pilcrow). Returns the same list for convenience/chaining."""
+    whose text contains a detected marker (a jo./juncto Pasal chain first,
+    then Pasal/ayat/huruf, then bracket/pilcrow). Returns the same list
+    for convenience/chaining."""
     for chunk in chunks:
-        pasal, ayat = find_pasal_markers(chunk.page_content)
-        pinpoint = format_pasal_pinpoint(pasal, ayat)
+        pinpoint = find_pasal_juncto(chunk.page_content)
+        if not pinpoint:
+            pasal, ayat = find_pasal_markers(chunk.page_content)
+            pinpoint = format_pasal_pinpoint(pasal, ayat, find_huruf_markers(chunk.page_content))
         if not pinpoint:
             pinpoint = format_pinpoint(find_paragraph_markers(chunk.page_content))
         if pinpoint:
