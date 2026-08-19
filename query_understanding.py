@@ -14,12 +14,31 @@ from enum import Enum, auto
 from typing import Optional
 
 
-# Matches every "page N" mention, not just the first - "correlation between
-# page 10 and page 23" needs both, not just whichever comes first. Also
-# matches the Indonesian equivalents "halaman N" / "hal. N" / "hal N",
-# since a question typed in Indonesian ("apa isi halaman 5") should route
-# the same way an English one does.
-PAGE_MENTION_RE = re.compile(r"\b(?:page|halaman|hal\.?)\s+(\d+)\b", re.IGNORECASE)
+# Matches every page number named in a question, including lists and
+# ranges: "page 5", "pages 5 and 7", "page 3, 5, and 7", "pages 5-7",
+# and the Indonesian equivalents ("halaman 5 dan 7"). The number list is
+# captured as one group and split/expanded by _parse_page_numbers, so a
+# second bare number after "and"/"," is NOT silently dropped the way the
+# old one-number-per-mention regex dropped it ("page 5 and 7" used to
+# retrieve only page 5).
+PAGE_MENTION_RE = re.compile(
+    r"\b(?:pages?|halaman|hal\.?)\s+"
+    r"(\d+(?:\s*[-–]\s*\d+)?"
+    r"(?:(?:\s*,\s*(?:(?:and|dan)\s+)?|\s+(?:and|dan)\s+)"
+    r"\d+(?:\s*[-–]\s*\d+)?)*)",
+    re.IGNORECASE,
+)
+
+# Ranges spanning more pages than this are collapsed to their two
+# endpoints instead of expanded - 'pages 1-10000' should not become a
+# 10,000-entry page fetch.
+_PAGE_RANGE_MAX_SPAN = 200
+
+# Splits a captured number list ("5 and 7", "3, 5-7, dan 9") on
+# commas/"and"/"dan" into its individual entries.
+_PAGE_LIST_SPLIT_RE = re.compile(r"\s*(?:,|and|dan)\s*", re.IGNORECASE)
+
+_PAGE_RANGE_RE = re.compile(r"(\d+)\s*[-–]\s*(\d+)")
 
 
 class Intent(Enum):
@@ -28,6 +47,35 @@ class Intent(Enum):
     FACTUAL = auto()         # default -> focused factual/compare/summarize lookup
     SUMMARIZE = auto()       # 'summarize:' prefix -> whole-document summary
     COMPARE = auto()         # 'compare:' prefix -> per-source retrieval, conflict-aware synthesis
+
+
+def _parse_page_numbers(query: str) -> list:
+    """
+    All page numbers named in `query`, in mention order (duplicates
+    removed by the caller). Supports 'page 5', 'pages 5 and 7',
+    'page 3, 5, and 7', 'halaman 5 dan 7', and ranges ('pages 5-7'
+    expands to 5, 6, 7; a range wider than _PAGE_RANGE_MAX_SPAN is
+    collapsed to its two endpoints rather than expanded).
+    """
+    numbers = []
+    for m in PAGE_MENTION_RE.finditer(query):
+        # Normalize ', and N' / ', dan N' to ', N' first so a bare
+        # re.split doesn't emit an empty part between the ',' and 'and'.
+        body = re.sub(r",\s+(?:and|dan)(?=\s+\d)", ",", m.group(1), flags=re.IGNORECASE)
+        for part in _PAGE_LIST_SPLIT_RE.split(body):
+            part = part.strip()
+            if not part:
+                continue
+            rng = _PAGE_RANGE_RE.fullmatch(part)
+            if rng:
+                lo, hi = sorted((int(rng.group(1)), int(rng.group(2))))
+                if hi - lo > _PAGE_RANGE_MAX_SPAN:
+                    numbers.extend((lo, hi))
+                else:
+                    numbers.extend(range(lo, hi + 1))
+            else:
+                numbers.append(int(part))
+    return numbers
 
 
 @dataclass
@@ -96,7 +144,7 @@ def parse_query(user_input: str) -> QueryPlan:
     if broad_mode:
         query = query[len("broad:"):].strip()
 
-    raw_page_nums = [int(n) for n in PAGE_MENTION_RE.findall(query)]
+    raw_page_nums = _parse_page_numbers(query)
     invalid_pages = sorted({n for n in raw_page_nums if n < 1})
     page_numbers = sorted({n - 1 for n in raw_page_nums if n >= 1})  # 0-indexed for metadata
 
