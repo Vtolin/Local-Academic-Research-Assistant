@@ -1,7 +1,7 @@
 
 # Academic Research Assistant with RAG
 
-Local RAG assistant over your PDF library, running entirely against a local Ollama instance. Hybrid BM25+vector retrieval, cross-encoder re-ranking, section/pinpoint/year/jurisdiction extraction, whole‑document summarization, cross‑source comparison with conflict detection, toggleable conversation memory, and an automatic research trail.
+Local RAG assistant over your PDF/DOCX library, running entirely against a local Ollama instance. Hybrid BM25+vector retrieval, cross-encoder re-ranking, section/pinpoint/year/jurisdiction extraction, whole‑document summarization, cross‑source comparison with conflict detection, toggleable conversation memory, and an automatic research trail.
 
 ## Setup
 
@@ -12,7 +12,7 @@ Local RAG assistant over your PDF library, running entirely against a local Olla
 
 ### 1. Clone or download the repository
 ```bash
-git clone https://github.com/Vtolin/Local-Academic-Research-Assistant/tree/main
+git clone https://github.com/Vtolin/Local-Academic-Research-Assistant.git
 cd local-academic-research-assistant
 ```
 
@@ -49,12 +49,12 @@ ollama pull qwen2.5:7b
 
 > If you are on a GPU‑poor machine, you can reduce model sizes (e.g., `qwen2.5:7b` → `qwen3.5:4b`) but quality will drop noticeably.
 
-### 5. Prepare your PDF library
-Create a folder named `pfolder` in the project root (or change `DOC_FOLDER` in `config.py`). Place your PDF files inside (subdirectories are supported).
+### 5. Prepare your document library
+Create a folder named `pfolder` in the project root (or change `DOC_FOLDER` in `config.py`). Place your PDF or DOCX files inside (subdirectories are supported; DOCX files are converted via PyMuPDF, so heading/year/jurisdiction extraction and page metadata work for both formats).
 
 ```bash
 mkdir pfolder
-# copy your PDFs into pfolder/
+# copy your PDFs/DOCX files into pfolder/
 ```
 
 ### 6. Run the assistant
@@ -63,12 +63,12 @@ python main.py
 ```
 
 On first run, it will:
-- Detect PDFs in `pfolder`
+- Detect supported documents (`.pdf`, `.docx`) in `pfolder`
 - Chunk and embed them using `nomic-embed-text`
 - Build a persistent Chroma vector store in `chroma_db/`
 - Load a BM25 index (rebuilds on‑the‑fly)
 
-Once ready, you’ll see a prompt. Type `reindex` if you add/remove PDFs later (the system also automatically syncs new files on startup).
+Once ready, you’ll see a prompt. Type `reindex` if you add/remove documents later (the system also automatically syncs new files on startup).
 
 ---
 
@@ -77,7 +77,7 @@ Once ready, you’ll see a prompt. Type `reindex` if you add/remove PDFs later (
 | Input | What happens |
 |---|---|
 | `What is the main methodology?` | Focused hybrid search |
-| `What does page 5 say?` / `compare page 10 and page 23` | Exact page(s), no search |
+| `What does page 5 say?` / `what do pages 5 and 7 say?` | Exact page(s), no search |
 | `summarize journal5` | Auto‑detected file reference, answered as a normal question scoped to that file |
 | `filter: filename.pdf \| your question` | Explicit file scope – also accepts a year (`filter: 2021 \| ...`) or jurisdiction (`filter: australia \| ...`) |
 | `broad: your question` | Wide, diversity‑optimized sweep |
@@ -118,7 +118,7 @@ All tunable parameters live in `config.py`. Key settings:
 |-------|------------|
 | `ModuleNotFoundError` | Check that you activated the virtual environment and installed requirements. |
 | `Ollama connection refused` | Ensure Ollama is running (`ollama serve` or check system tray). |
-| Embedding errors during indexing | Some PDFs may contain malformed characters. The system skips bad chunks; check the warning messages. |
+| Embedding errors during indexing | Some documents may contain malformed characters. The system skips bad chunks; check the warning messages. |
 | `Error finding id` during retrieval | This is a Chroma/HNSW issue when requesting more results than available. The system caps `k` automatically when a filter is active. If you still see it, reduce `SIMILARITY_K` or `BROAD_K`. |
 | `flashrank` download fails | Check your internet connection and proxy settings. You can also download the model manually and point `RERANK_CACHE_DIR` to the local folder. |
 | Out‑of‑memory (OOM) | Lower the context windows in `config.py` (e.g., `NUM_CTX=8192`), use smaller models, or enable CPU offloading in Ollama. |
@@ -136,7 +136,7 @@ All tunable parameters live in `config.py`. Key settings:
 | `metadata_extraction.py` | Publication‑year extraction |
 | `jurisdiction_extraction.py` | Jurisdiction/court extraction (keyword patterns) |
 | `pinpoint_detection.py` | Paragraph‑marker (pinpoint citation) detection |
-| `ingestion.py` | PDF loading, chunking, metadata tagging, vector store sync |
+| `ingestion.py` | Document (PDF/DOCX) loading, chunking, metadata tagging, vector store sync |
 | `retrieval.py` | Hybrid retrieval, direct/whole‑doc fetch, cross‑encoder rerank |
 | `generation.py` | Context assembly, per‑intent prompts (incl. compare), Ollama calls |
 | `summarization.py` | Whole‑document summarization (stuff / map‑reduce) |
@@ -145,14 +145,3 @@ All tunable parameters live in `config.py`. Key settings:
 | `main.py` | CLI orchestration |
 
 ---
-
-## Next Steps / Customisation
-
-- **Citation style:** Edit `research_trail.py` → `format_citation` to implement Bluebook, OSCOLA, AGLC, or your faculty’s style.
-- **Add more jurisdictions:** Extend the pattern table in `jurisdiction_extraction.py`.
-- **Prompt tuning:** Adjust system prompts in `generation.py` and `summarization.py` to better suit your domain.
-- **Frontend:** The CLI works, but you can wrap the logic in a Streamlit or Gradio UI.
-
----
-
-## License
