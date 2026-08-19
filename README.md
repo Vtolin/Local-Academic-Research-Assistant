@@ -1,5 +1,5 @@
 
-# Academic Thesis / Legal Research RAG Assistant
+# Academic Research Assistant with RAG
 
 Local RAG assistant over your PDF library, running entirely against a local Ollama instance. Hybrid BM25+vector retrieval, cross-encoder re-ranking, section/pinpoint/year/jurisdiction extraction, whole‑document summarization, cross‑source comparison with conflict detection, toggleable conversation memory, and an automatic research trail.
 
