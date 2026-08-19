@@ -1,5 +1,5 @@
 """
-Ingestion: loading PDFs from disk, chunking, and building/syncing the
+Ingestion: loading documents from disk, chunking, and building/syncing the
 persistent Chroma vector store.
 
 Uses heading_detection.py (PyMuPDF-based) instead of PyPDFLoader for
@@ -8,6 +8,11 @@ structural information, which is enough for page-level metadata but
 useless for section labels. heading_detection splits each page into
 (section, text) segments up front, so every chunk downstream carries a
 real 'section' tag alongside its page number.
+
+Supported formats: PDF and DOCX. DOCX support comes free via PyMuPDF,
+which converts Word documents through the same fitz page API used for
+PDFs - so heading detection, year/jurisdiction extraction, page metadata,
+and chunking all work unchanged for either format.
 """
 import os
 
@@ -20,6 +25,10 @@ from heading_detection import build_page_texts_with_sections
 from metadata_extraction import extract_year
 from jurisdiction_extraction import extract_jurisdiction
 from pinpoint_detection import tag_chunks_with_pinpoints
+
+# Formats that can be opened through PyMuPDF's fitz API (PDF + DOCX both
+# work; add more extensions here if a format fitz can open is needed).
+_SUPPORTED_EXTENSIONS = (".pdf", ".docx")
 
 
 def _sanitize_text(text):
@@ -124,18 +133,19 @@ def get_indexed_jurisdictions(vectorstore):
     return doc_jurisdictions
 
 
-def _load_pdf_with_sections(path):
+def _load_document_with_sections(path):
     """
-    Load one PDF into a list of Documents - one per (page, detected
-    section) segment - using layout-aware heading detection. If no
-    headings are found anywhere in the document, this degrades to exactly
-    one Document per page with an empty section label, which is no worse
-    than the original flat page-blob extraction.
+    Load one document (PDF or DOCX) into a list of Documents - one per
+    (page, detected section) segment - using layout-aware heading
+    detection. If no headings are found anywhere in the document, this
+    degrades to exactly one Document per page with an empty section label,
+    which is no worse than the original flat page-blob extraction.
 
     Also runs best-effort publication-year and jurisdiction extraction
-    once per PDF (not once per segment) and stamps every segment from this
-    file with the same values, so year/jurisdiction filtering work at the
-    document level regardless of which chunk ends up matching a query.
+    once per document (not once per segment) and stamps every segment
+    from this file with the same values, so year/jurisdiction filtering
+    work at the document level regardless of which chunk ends up matching
+    a query.
     """
     try:
         pages = build_page_texts_with_sections(path)
@@ -165,16 +175,17 @@ def _load_pdf_with_sections(path):
 def split_and_load(paths):
     docs = []
     for p in paths:
-        docs.extend(_load_pdf_with_sections(p))
+        docs.extend(_load_document_with_sections(p))
     return docs
 
 
-def _discover_pdfs():
-    """Every .pdf under DOC_FOLDER, including subfolders."""
+def _discover_documents():
+    """Every supported document (.pdf/.docx) under DOC_FOLDER, including
+    subfolders."""
     paths = []
     for root, _, files in os.walk(DOC_FOLDER):
         for f in files:
-            if f.lower().endswith(".pdf"):
+            if f.lower().endswith(_SUPPORTED_EXTENSIONS):
                 paths.append(os.path.join(root, f))
     return sorted(paths)
 
@@ -252,18 +263,18 @@ def index_folder(embeddings, persist_dir=None):
     still has the old index untouched.
     """
     persist_dir = persist_dir or PERSIST_DIR
-    print(f"\n[1/3] Loading PDFs from '{DOC_FOLDER}'...")
-    pdf_paths = _discover_pdfs()
-    if not pdf_paths:
+    print(f"\n[1/3] Loading documents from '{DOC_FOLDER}'...")
+    doc_paths = _discover_documents()
+    if not doc_paths:
         return None
 
     docs = []
-    for i, p in enumerate(pdf_paths, 1):
-        print(f"  [{i}/{len(pdf_paths)}] {os.path.basename(p)}")
-        docs.extend(_load_pdf_with_sections(p))
+    for i, p in enumerate(doc_paths, 1):
+        print(f"  [{i}/{len(doc_paths)}] {os.path.basename(p)}")
+        docs.extend(_load_document_with_sections(p))
     if not docs:
         return None
-    print(f"Loaded {len(docs)} page/section segment(s) from {len(pdf_paths)} file(s).")
+    print(f"Loaded {len(docs)} page/section segment(s) from {len(doc_paths)} file(s).")
 
     print("\n[2/3] Splitting documents into chunks...")
     splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
@@ -280,33 +291,38 @@ def index_folder(embeddings, persist_dir=None):
         return vectorstore
     except Exception as e:
         # Deliberately re-raised rather than returned as None: None is
-        # also what this function returns when there are simply no PDFs
-        # to index (see the early return above), and those are two very
-        # different situations for a caller to report to the user - "add
-        # some PDFs" vs. "your embedding backend errored out on
-        # every chunk". Swallowing this into the same None made every
-        # embedding failure print a misleading "No PDF files found" in
-        # main.py even when PDFs were found and chunked successfully.
+        # also what this function returns when there are simply no
+        # documents to index (see the early return above), and those are
+        # two very different situations for a caller to report to the
+        # user - "add some documents" vs. "your embedding backend
+        # (Ollama) errored out on every chunk". Swallowing this into the
+        # same None made every embedding failure print a misleading
+        # "No documents found" in main.py even when files were found and
+        # chunked successfully.
         print(f"Error generating embeddings: {e}")
         raise
 
 
 def sync_new_files(vectorstore, doc_map):
     """
-    Embed any PDFs dropped into pfolder (including subfolders) since the
-    last run. Returns True if anything new was indexed - callers should
-    refresh the BM25 side of hybrid retrieval (HybridIndex.refresh_bm25)
-    whenever this happens, since BM25Retriever has no add_documents and
-    would otherwise silently miss the new content.
+    Embed any documents dropped into pfolder (including subfolders) since
+    the last run. Returns True if anything new was indexed - callers
+    should refresh the BM25 side of hybrid retrieval
+    (HybridIndex.refresh_bm25) whenever this happens, since
+    BM25Retriever has no add_documents and would otherwise silently miss
+    the new content.
     """
-    on_disk = {_relative_source(p) for p in _discover_pdfs()}
+    on_disk = {_relative_source(p) for p in _discover_documents()}
 
     new_files = sorted(on_disk - set(doc_map.keys()))
     if not new_files:
         return False
 
-    print(f"\nFound {len(new_files)} new PDF(s) not yet indexed: {', '.join(new_files)}")
-    full_paths = [os.path.join(DOC_FOLDER, f) for f in new_files]
+    print(f"\nFound {len(new_files)} new file(s) not yet indexed: {', '.join(new_files)}")
+    # normpath so the stored 'source' metadata uses the platform separator
+    # (new_files keys are forward-slash relative paths from
+    # _relative_source, which would otherwise be stored mixed-separator).
+    full_paths = [os.path.normpath(os.path.join(DOC_FOLDER, f)) for f in new_files]
     docs = split_and_load(full_paths)
     if not docs:
         return False
