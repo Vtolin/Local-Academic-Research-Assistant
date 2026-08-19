@@ -22,18 +22,27 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# The ollama Python client logs every HTTP request/response via httpx at
-# INFO level (e.g. "POST /api/chat 200 OK"). Harmless - just noisy in a
-# CLI - so it's quieted to WARNING here rather than left to clutter every
-# query. Leave this out (or set it back to INFO) if you want to see raw
-# request/response logging for debugging network issues with Ollama.
+# The LLM client (Ollama and LM Studio both use httpx under the hood) logs
+# every HTTP request/response at INFO level (e.g. "POST /api/chat 200 OK").
+# Harmless - just noisy in a CLI - so it's quieted to WARNING here rather
+# than left to clutter every query. Leave this out (or set it back to INFO)
+# if you want to see raw request/response logging for debugging network
+# issues with the model server.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 from langchain_chroma import Chroma
-from langchain_ollama import OllamaEmbeddings
+
+from llm_client import make_embeddings, unload_lmstudio_models
 
 from config import (
-    PERSIST_DIR, DOC_FOLDER, EMBED_MODEL, HYBRID_TOP_N, BROAD_TOP_N,
+    PERSIST_DIR, DOC_FOLDER,
+    EMBED_MODEL, EMBED_PROVIDER,
+    RAG_MODEL, RAG_PROVIDER,
+    MAP_MODEL, MAP_PROVIDER,
+    REDUCE_MODEL, REDUCE_PROVIDER,
+    SYNTHESIS_MODEL, SYNTHESIS_PROVIDER,
+    LM_STUDIO_UNLOAD_ON_STARTUP,
+    HYBRID_TOP_N, BROAD_TOP_N,
     MAX_HISTORY_TURNS, COMPARE_TOP_N_PER_SOURCE,
 )
 from ingestion import (
@@ -200,7 +209,7 @@ def handle_compare(plan, vectorstore, hybrid_index, doc_map, doc_years, doc_juri
     try:
         answer = generate_answer(plan.query, formatted_context, Intent.COMPARE, history_messages=memory.as_messages())
     except Exception as e:
-        print(f"\nAn error occurred talking to Ollama: {e}")
+        print(f"\nAn error occurred talking to the LLM backend: {e}")
         return
 
     print("\nAnswer:")
@@ -287,7 +296,7 @@ def handle_query(user_input, vectorstore, hybrid_index, doc_map, doc_years, doc_
     try:
         answer = generate_answer(plan.query, formatted_context, plan.intent, history_messages=memory.as_messages())
     except Exception as e:
-        print(f"\nAn error occurred talking to Ollama: {e}")
+        print(f"\nAn error occurred talking to the LLM backend: {e}")
         return
 
     print("\nAnswer:")
@@ -312,20 +321,30 @@ def main():
     print(" (hybrid BM25+vector retrieval, cross-encoder re-ranked)")
     print("=" * 60)
 
+    if LM_STUDIO_UNLOAD_ON_STARTUP:
+        try:
+            if unload_lmstudio_models():
+                print(
+                    "\n[llm_client] Unloaded stale LM Studio model(s) on startup; "
+                    "they'll reload with a TTL when synthesis actually needs them."
+                )
+        except Exception:
+            pass
+
     if not os.path.exists(DOC_FOLDER):
         os.makedirs(DOC_FOLDER)
         print(f"\nCreated folder '{DOC_FOLDER}'. Please place your PDF files there and restart.")
         return
 
-    embeddings = OllamaEmbeddings(model=EMBED_MODEL)
+    embeddings = make_embeddings(EMBED_MODEL, EMBED_PROVIDER)
 
     if not os.path.exists(PERSIST_DIR) or not os.listdir(PERSIST_DIR):
         try:
             vectorstore = index_folder(embeddings)
         except Exception as e:
             print(f"\nCouldn't build the index because embedding generation failed: {e}")
-            print("This means Ollama/the embedding model isn't reachable, not that your PDFs are missing.")
-            print("Check that Ollama is running and reachable, then run this again.")
+            print("This means the model server / embedding model isn't reachable, not that your PDFs are missing.")
+            print("Check that your model server (Ollama or LM Studio) is running and reachable, then run this again.")
             return
         if vectorstore is None:
             print(f"\nError: No PDF files found in '{DOC_FOLDER}'. Add PDFs and run again.")
@@ -356,6 +375,10 @@ def main():
 
     print("\n" + "=" * 60)
     print(f"System Ready! ({doc_count} documents indexed)")
+    print(" Model routing:")
+    print(f"  - RAG: {RAG_MODEL} ({RAG_PROVIDER})")
+    print(f"  - summarize: map {MAP_MODEL} ({MAP_PROVIDER}) -> reduce {REDUCE_MODEL} ({REDUCE_PROVIDER}) -> synthesis {SYNTHESIS_MODEL} ({SYNTHESIS_PROVIDER})")
+    print(f"  - embeddings: {EMBED_MODEL} ({EMBED_PROVIDER})")
     print(" - Ask normal questions: 'What is the main methodology?'")
     print(" - Ask about specific pages: 'What does page 5 say?' or 'compare page 10 and page 23'")
     print(" - Mention a numbered file directly: 'summarize journal5' (auto-detected)")
