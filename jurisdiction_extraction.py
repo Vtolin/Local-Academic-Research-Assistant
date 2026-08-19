@@ -50,6 +50,18 @@ _JURISDICTION_PATTERNS = [
     (r"\bpengadilan niaga\b", "Indonesia (Commercial Court)"),
     (r"\bpengadilan pajak\b", "Indonesia (Tax Court)"),
     (r"\bpengadilan militer\b", "Indonesia (Military Court)"),
+
+    # Specialized courts and dispute-resolution fora
+    (r"\bmahkamah syar'?iyah\b", "Indonesia (Mahkamah Syar'iyah / Sharia Court, Aceh)"),
+    (r"\bpengadilan syar'?iyah\b", "Indonesia (Pengadilan Syar'iyah / Sharia Court, Aceh)"),
+    (r"\bpengadilan tindak pidana korupsi\b|\bpengadilan tipikor\b", "Indonesia (Corruption Court / Tipikor)"),
+    (r"\bpengadilan hak asasi manusia\b", "Indonesia (Human Rights Court)"),
+    (r"\bpengadilan perikanan\b", "Indonesia (Fisheries Court)"),
+    (r"\bpengadilan anak\b", "Indonesia (Juvenile Court)"),
+    (r"\bbadan penyelesaian sengketa konsumen\b", "Indonesia (BPSK / Consumer Dispute Settlement Body)"),
+    (r"\bkomisi pengawas persaingan usaha\b", "Indonesia (KPPU / Competition Commission)"),
+    (r"\bbadan arbitrase nasional indonesia\b", "Indonesia (BANI / National Arbitration Board)"),
+
     (r"\bmahkamah agung\b", "Indonesia (Mahkamah Agung / Supreme Court)"),
     (r"\bmahkamah konstitusi\b", "Indonesia (Mahkamah Konstitusi / Constitutional Court)"),
     (r"\bpengadilan tinggi\b", "Indonesia (High Court)"),   # generic - after all "pengadilan tinggi X" above
