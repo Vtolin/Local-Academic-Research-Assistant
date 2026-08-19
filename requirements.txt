@@ -1,5 +1,9 @@
+# If you upgrade anything, expect to re-verify ingestion, retrieval, and
+# the 'reindex' swap (chromadb's client/System lifecycle changed between
+# major versions and main.py's close/swap logic depends on it).
 ollama
 langchain
+langchain-classic
 langchain-community
 langchain-core
 langchain-text-splitters
@@ -7,6 +11,11 @@ langchain-chroma
 langchain-ollama
 chromadb
 pymupdf
-rank_bm25
+rank-bm25
 flashrank
 tiktoken
+
+# NOTE: flashrank downloads its cross-encoder (ms-marco-MiniLM-L-12-v2,
+# ~500 MB) from Hugging Face on first use - it is NOT bundled and NOT
+# checksum-verified. If that's a concern, pre-download it manually and
+# point RERANK_CACHE_DIR at the local folder (see config.py).
