@@ -146,12 +146,4 @@ All tunable parameters live in `config.py`. Key settings:
 
 ---
 
-## Next Steps / Customisation
-
-- **Citation style:** Edit `research_trail.py` → `format_citation` to implement Bluebook, OSCOLA, AGLC, or your faculty’s style.
-- **Add more jurisdictions:** Extend the pattern table in `jurisdiction_extraction.py`.
-- **Prompt tuning:** Adjust system prompts in `generation.py` and `summarization.py` to better suit your domain.
-- **Frontend:** The CLI works, but you can wrap the logic in a Streamlit or Gradio UI.
-
----
 
