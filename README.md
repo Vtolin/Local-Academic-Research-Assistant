@@ -12,7 +12,7 @@ Local RAG assistant over your PDF library, running entirely against a local Olla
 
 ### 1. Clone or download the repository
 ```bash
-git clone https://github.com/Vtolin/Local-Academic-Research-Assistant/blob/main/README.md
+git clone https://github.com/Vtolin/Local-Academic-Research-Assistant/tree/main
 cd local-academic-research-assistant
 ```
 
