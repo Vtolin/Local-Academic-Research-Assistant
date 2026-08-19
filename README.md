@@ -47,7 +47,8 @@ ollama pull qwen3.5:4b
 ollama pull qwen2.5:7b
 ```
 
-> Note: the config.py defaults at a 7b + 7b configuration
+> Note: the config.py defaults at a 7b + 7b configuration.
+---
 > If you are on a GPU‑poor machine, you can reduce model sizes (e.g., `qwen2.5:7b` → `qwen3.5:4b`) but quality will drop noticeably if you use `qwen3.5:4b` for synthesis.
 
 ### 5. Prepare your document library
