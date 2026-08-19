@@ -283,7 +283,7 @@ def index_folder(embeddings, persist_dir=None):
         # also what this function returns when there are simply no PDFs
         # to index (see the early return above), and those are two very
         # different situations for a caller to report to the user - "add
-        # some PDFs" vs. "your embedding backend (Ollama) errored out on
+        # some PDFs" vs. "your embedding backend errored out on
         # every chunk". Swallowing this into the same None made every
         # embedding failure print a misleading "No PDF files found" in
         # main.py even when PDFs were found and chunked successfully.
