@@ -200,9 +200,28 @@ _EMBED_BATCH_SIZE = 200
 
 def _add_batch(vectorstore, docs, embeddings, persist_dir):
     """Embed and store one batch, creating the Chroma collection on the
-    first successful batch and appending to it afterward."""
+    first successful batch and appending to it afterward.
+
+    The first-batch path closes its client before re-raising if embedding
+    fails. This matters: chromadb's SharedSystemClient keeps a reference
+    to the System (and its open SQLite/segment file handles) in a
+    process-wide cache, so a client that dies inside an exception without
+    an explicit close() would otherwise keep the persist directory locked
+    for the rest of the process - the same class of bug as main.py's
+    reindex lock, here triggered by a mid-build embedding failure, and it
+    would silently poison every later build into that directory.
+    """
     if vectorstore is None:
-        return Chroma.from_documents(documents=docs, embedding=embeddings, persist_directory=persist_dir)
+        new_store = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
+        try:
+            new_store.add_documents(docs)
+        except Exception:
+            try:
+                new_store._client.close()
+            except Exception:
+                pass
+            raise
+        return new_store
     vectorstore.add_documents(docs)
     return vectorstore
 
