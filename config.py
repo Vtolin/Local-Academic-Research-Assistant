@@ -31,7 +31,7 @@ RERANK_CACHE_DIR = "./rerank_cache"
 # --- Generation ---
 # Map/extract: 4B is fast and adequate for bulk fact extraction (batches
 # are short, mechanical bullets). Change to match your actual Ollama tag.
-LLM_MODEL = "qwen3.5:4b"
+LLM_MODEL = "qwen2.5:7b" # You may want to use Qwen3.5:4b here if you have 4gb VRAM unless you're okay sacrificing speed for precision
 
 # Final synthesis: 14B is strongly recommended for survey/journal depth.
 # If 14B is too slow, use qwen2.5:7b temporarily, but quality will drop.
