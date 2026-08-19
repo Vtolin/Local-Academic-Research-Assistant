@@ -34,21 +34,25 @@ def format_citation(doc_meta, style="plain"):
     formatting:
       - "plain" (default): "filename.pdf, Page 3, ¶ 42 (Section)" - style-
         agnostic, always available, safe default until a real citation
-        style is configured.
+        style is configured. Metadata without a 'page' key (e.g. the
+        whole-document source recorded for 'summarize:' trail entries) is
+        cited by filename plus year/jurisdiction only, no page number.
       - Add more styles here once you've picked one (Bluebook/OSCOLA/
         AGLC/...) - each is just a different arrangement of the same
         underlying fields (source, page, pinpoint, section, year,
         jurisdiction), no new detection work needed.
     """
     src = os.path.basename(doc_meta.get("source", "Unknown file"))
-    page = doc_meta.get("page", 0) + 1
+    page = doc_meta.get("page")
     pinpoint = (doc_meta.get("pinpoint") or "").strip()
     section = (doc_meta.get("section") or "").strip()
     year = doc_meta.get("year")
     jurisdiction = (doc_meta.get("jurisdiction") or "").strip()
 
     if style == "plain":
-        parts = [src, f"Page {page}"]
+        parts = [src]
+        if page is not None:
+            parts.append(f"Page {page + 1}")
         if pinpoint:
             parts.append(pinpoint)
         line = ", ".join(parts)
@@ -80,9 +84,13 @@ class ResearchTrail:
         self.path = path
         self._seen_citations = {}  # citation line -> doc_meta, for export_citations
 
-    def log(self, mode, question, answer, retrieved_docs):
+    def log(self, mode, question, answer, retrieved_docs, details=None):
         """Append one entry. `mode` is a short label ('ask', 'broad',
-        'summarize', 'compare') so the trail reads clearly when skimmed."""
+        'summarize', 'compare') so the trail reads clearly when skimmed.
+        `details` is an optional ordered mapping of label -> value,
+        rendered as a bullet list between the question and the answer -
+        used for whole-document summaries so method/doc-type/page/chunk
+        stats that the answer text doesn't state are still recorded."""
         citations = []
         for doc in retrieved_docs:
             meta = doc.metadata
@@ -97,9 +105,13 @@ class ResearchTrail:
             "",
             f"**Q:** {question}",
             "",
-            f"**A:** {answer}",
-            "",
         ]
+        if details:
+            entry_lines.append("**Details:**")
+            entry_lines.extend(f"- {label}: {value}" for label, value in details.items())
+            entry_lines.append("")
+        entry_lines.append(f"**A:** {answer}")
+        entry_lines.append("")
         if citations:
             entry_lines.append("**Sources:**")
             for c in dict.fromkeys(citations):  # dedupe, keep first-seen order
