@@ -6,7 +6,7 @@ Local RAG assistant over your PDF library, running entirely against a local Olla
 ## Setup
 
 ### Prerequisites
-- **Python 3.9+** (tested with 3.10, 3.11)
+- **Python 3.9+** (tested with 3.13)
 - **Ollama** installed and running locally (download from [ollama.com](https://ollama.com))
 - **At least 8GB RAM** (more recommended) – the 7B/14B models require VRAM/CPU offload; adjust models in `config.py` if you have limited resources.
 
