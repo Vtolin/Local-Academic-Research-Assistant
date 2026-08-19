@@ -43,7 +43,7 @@ from ingestion import (
 )
 from query_understanding import parse_query, Intent
 from filters import resolve_filter, build_source_filter
-from retrieval import HybridIndex, get_chunks_by_pages, sort_docs
+from retrieval import HybridIndex, get_chunks_by_pages, sort_docs, Chunk
 from generation import format_docs, format_compare_docs, warn_if_context_too_large, generate_answer
 from summarization import summarize_document
 from conversation import ConversationMemory
@@ -175,7 +175,36 @@ def handle_summarize(plan, vectorstore, doc_map, doc_years, doc_jurisdictions, d
     print("-" * 60)
 
     if summary:
-        trail.log("summarize", f"summarize: {display_name}", summary, [])
+        # Structured trail entry, mirroring the compare/broad entries:
+        # a Details block records the run stats (the answer text doesn't
+        # state method/doc-type/table counts), and the Sources section
+        # cites the one document the summary covers.
+        details = {
+            "Method": stats["method"],
+            "Document type": stats.get("doc_type", "unknown"),
+            "Pages": stats["page_count"],
+            "Chunks": stats["chunk_count"],
+            "Verbatim facts extracted": stats.get("verbatim_fact_count", 0),
+        }
+        if stats.get("table_rows_filtered"):
+            details["Table rows excluded"] = stats["table_rows_filtered"]
+        total = stats.get("total_seconds")
+        if total:
+            details["Time"] = f"{int(total // 60)}m {int(total % 60):02d}s"
+
+        source_meta = {"source": full_source}
+        if doc_years.get(display_name):
+            source_meta["year"] = doc_years[display_name]
+        if doc_jurisdictions.get(display_name):
+            source_meta["jurisdiction"] = doc_jurisdictions[display_name]
+
+        trail.log(
+            "summarize",
+            f"summarize: {display_name}",
+            summary,
+            [Chunk(page_content="", metadata=source_meta)],
+            details=details,
+        )
 
 
 def handle_compare(plan, vectorstore, hybrid_index, doc_map, doc_years, doc_jurisdictions, memory, trail):
@@ -393,7 +422,7 @@ def main():
     print(" - Mention a numbered file directly: 'summarize journal5' (auto-detected)")
     print(" - Or a publication year: 'what does the 2021 paper say' (extracted from each document's front matter)")
     print(" - Or target explicitly: 'filter: filename.pdf | your question'")
-    print("   (also accepts a year or jurisdiction: 'filter: 2021 | ...', 'filter: australia | ...')")
+    print("   (also accepts a year or jurisdiction: 'filter: 2021 | ...', 'filter: indonesia | ...')")
     print(" - Prefix with 'broad:' for a wide, diverse sweep instead of a focused lookup")
     print(" - Prefix with 'summarize:' for a whole-document summary (not top-k retrieval)")
     print("   e.g. 'summarize: journal5', 'summarize: journal5.pdf', or 'summarize: 2021'")
