@@ -79,7 +79,7 @@ Once ready, you’ll see a prompt. Type `reindex` if you add/remove documents la
 | `What is the main methodology?` | Focused hybrid search |
 | `What does page 5 say?` / `what do pages 5 and 7 say?` | Exact page(s), no search |
 | `summarize journal5` | Auto‑detected file reference, answered as a normal question scoped to that file |
-| `filter: filename.pdf \| your question` | Explicit file scope – also accepts a year (`filter: 2021 \| ...`) or jurisdiction (`filter: australia \| ...`) |
+| `filter: filename.pdf \| your question` | Explicit file scope – also accepts a year (`filter: 2021 \| ...`) or jurisdiction (`filter: indonesia \| ...`) |
 | `broad: your question` | Wide, diversity‑optimized sweep |
 | `summarize: journal5` / `summarize: 2021` | Whole‑document summary (stuffing or map‑reduce) |
 | `compare: doc1, doc2 \| your question` | Separate per‑source retrieval + conflict‑aware synthesis |
@@ -134,8 +134,8 @@ All tunable parameters live in `config.py`. Key settings:
 | `filters.py` | Filename, year, and jurisdiction filter resolution |
 | `heading_detection.py` | Section heading detection (font size/boldness) |
 | `metadata_extraction.py` | Publication‑year extraction |
-| `jurisdiction_extraction.py` | Jurisdiction/court extraction (keyword patterns) |
-| `pinpoint_detection.py` | Paragraph‑marker (pinpoint citation) detection |
+| `jurisdiction_extraction.py` | Jurisdiction/court extraction (keyword patterns, incl. Indonesian courts) |
+| `pinpoint_detection.py` | Pinpoint citation detection (¶ markers, Pasal/ayat/huruf, jo./juncto chains) |
 | `ingestion.py` | Document (PDF/DOCX) loading, chunking, metadata tagging, vector store sync |
 | `retrieval.py` | Hybrid retrieval, direct/whole‑doc fetch, cross‑encoder rerank |
 | `generation.py` | Context assembly, per‑intent prompts (incl. compare), Ollama calls |
@@ -145,3 +145,13 @@ All tunable parameters live in `config.py`. Key settings:
 | `main.py` | CLI orchestration |
 
 ---
+
+## Next Steps / Customisation
+
+- **Citation style:** Edit `research_trail.py` → `format_citation` to implement Bluebook, OSCOLA, AGLC, or your faculty’s style.
+- **Add more jurisdictions:** Extend the pattern table in `jurisdiction_extraction.py`.
+- **Prompt tuning:** Adjust system prompts in `generation.py` and `summarization.py` to better suit your domain.
+- **Frontend:** The CLI works, but you can wrap the logic in a Streamlit or Gradio UI.
+
+---
+
