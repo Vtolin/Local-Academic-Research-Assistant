@@ -16,6 +16,13 @@ Two related but distinct things:
     is deliberately not hardcoded here - see format_citation's `style`
     parameter - because getting that wrong is worse than not offering it;
     ask before assuming a convention.
+
+  Security note: question and answer text (including quotes from the
+  source documents) is written VERBATIM by design - an audit trail that
+  sanitizes content would no longer be verbatim. That means the file is
+  untrusted content: if you ever render research_trail.md as HTML or
+  feed it to another tool, embedded document text could carry malicious
+  links or markup. Treat it as data, not as a document you authored.
 """
 import os
 from datetime import datetime
