@@ -11,7 +11,8 @@ below):
     -> summarize             -> Filter Resolution -> whole-document fetch -> stuff/map-reduce
     -> compare                -> Filter Resolution PER TARGET -> separate per-source retrieval
   -> Cross-Encoder Re-ranking -> Context Assembly -> Prompt Selection (by intent)
-  -> Qwen3:14b Generation -> Citation Formatting -> Research Trail -> Final Response
+  -> LLM Generation (config.LLM_MODEL / SYNTHESIS_MODEL) -> Citation Formatting
+  -> Research Trail -> Final Response
 """
 import gc
 import logging
@@ -22,27 +23,18 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# The LLM client (Ollama and LM Studio both use httpx under the hood) logs
-# every HTTP request/response at INFO level (e.g. "POST /api/chat 200 OK").
-# Harmless - just noisy in a CLI - so it's quieted to WARNING here rather
-# than left to clutter every query. Leave this out (or set it back to INFO)
-# if you want to see raw request/response logging for debugging network
-# issues with the model server.
+# The ollama Python client logs every HTTP request/response via httpx at
+# INFO level (e.g. "POST /api/chat 200 OK"). Harmless - just noisy in a
+# CLI - so it's quieted to WARNING here rather than left to clutter every
+# query. Leave this out (or set it back to INFO) if you want to see raw
+# request/response logging for debugging network issues with Ollama.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 from langchain_chroma import Chroma
-
-from llm_client import make_embeddings, unload_lmstudio_models
+from langchain_ollama import OllamaEmbeddings
 
 from config import (
-    PERSIST_DIR, DOC_FOLDER,
-    EMBED_MODEL, EMBED_PROVIDER,
-    RAG_MODEL, RAG_PROVIDER,
-    MAP_MODEL, MAP_PROVIDER,
-    REDUCE_MODEL, REDUCE_PROVIDER,
-    SYNTHESIS_MODEL, SYNTHESIS_PROVIDER,
-    LM_STUDIO_UNLOAD_ON_STARTUP,
-    HYBRID_TOP_N, BROAD_TOP_N,
+    PERSIST_DIR, DOC_FOLDER, EMBED_MODEL, HYBRID_TOP_N, BROAD_TOP_N,
     MAX_HISTORY_TURNS, COMPARE_TOP_N_PER_SOURCE,
 )
 from ingestion import (
@@ -82,6 +74,31 @@ def _safe_rmtree(path, retries=5, delay=0.5):
             return True
         time.sleep(delay)
     return not os.path.exists(path)
+
+
+def _close_chroma_client(vectorstore):
+    """
+    Deterministically release a Chroma client's file handles so its
+    persist directory can be deleted/moved immediately afterward.
+
+    chromadb's Client.close() stops the shared System singleton - closing
+    chroma.sqlite3 and the segment files - once the last client referencing
+    it is closed. This is what makes a follow-up rmtree succeed. The
+    previously used SharedSystemClient.clear_system_cache() only dropped
+    the cache dictionaries WITHOUT stopping the System, so every file
+    handle stayed open and the delete failed on Windows with "a file may
+    still be locked" (the exact error reindex used to report).
+    """
+    try:
+        client = getattr(vectorstore, "_client", None)
+        if client is not None:
+            client.close()
+    except Exception:
+        try:
+            import chromadb
+            chromadb.api.client.SharedSystemClient.clear_system_cache()
+        except Exception:
+            pass
 
 
 def print_available_docs(doc_map):
@@ -209,7 +226,7 @@ def handle_compare(plan, vectorstore, hybrid_index, doc_map, doc_years, doc_juri
     try:
         answer = generate_answer(plan.query, formatted_context, Intent.COMPARE, history_messages=memory.as_messages())
     except Exception as e:
-        print(f"\nAn error occurred talking to the LLM backend: {e}")
+        print(f"\nAn error occurred talking to Ollama: {e}")
         return
 
     print("\nAnswer:")
@@ -296,7 +313,7 @@ def handle_query(user_input, vectorstore, hybrid_index, doc_map, doc_years, doc_
     try:
         answer = generate_answer(plan.query, formatted_context, plan.intent, history_messages=memory.as_messages())
     except Exception as e:
-        print(f"\nAn error occurred talking to the LLM backend: {e}")
+        print(f"\nAn error occurred talking to Ollama: {e}")
         return
 
     print("\nAnswer:")
@@ -321,33 +338,23 @@ def main():
     print(" (hybrid BM25+vector retrieval, cross-encoder re-ranked)")
     print("=" * 60)
 
-    if LM_STUDIO_UNLOAD_ON_STARTUP:
-        try:
-            if unload_lmstudio_models():
-                print(
-                    "\n[llm_client] Unloaded stale LM Studio model(s) on startup; "
-                    "they'll reload with a TTL when synthesis actually needs them."
-                )
-        except Exception:
-            pass
-
     if not os.path.exists(DOC_FOLDER):
         os.makedirs(DOC_FOLDER)
-        print(f"\nCreated folder '{DOC_FOLDER}'. Please place your PDF files there and restart.")
+        print(f"\nCreated folder '{DOC_FOLDER}'. Please place your document files (PDF or DOCX) there and restart.")
         return
 
-    embeddings = make_embeddings(EMBED_MODEL, EMBED_PROVIDER)
+    embeddings = OllamaEmbeddings(model=EMBED_MODEL)
 
     if not os.path.exists(PERSIST_DIR) or not os.listdir(PERSIST_DIR):
         try:
             vectorstore = index_folder(embeddings)
         except Exception as e:
             print(f"\nCouldn't build the index because embedding generation failed: {e}")
-            print("This means the model server / embedding model isn't reachable, not that your PDFs are missing.")
-            print("Check that your model server (Ollama or LM Studio) is running and reachable, then run this again.")
+            print("This means Ollama/the embedding model isn't reachable, not that your documents are missing.")
+            print("Check that Ollama is running and reachable, then run this again.")
             return
         if vectorstore is None:
-            print(f"\nError: No PDF files found in '{DOC_FOLDER}'. Add PDFs and run again.")
+            print(f"\nError: No documents found in '{DOC_FOLDER}'. Add PDF or DOCX files and run again.")
             return
     else:
         print("\nLoading existing Vector Database from disk...")
@@ -373,16 +380,18 @@ def main():
     doc_jurisdictions = get_indexed_jurisdictions(vectorstore)
     doc_count = len(doc_map)
 
+    # Where the live index actually lives. Normally PERSIST_DIR, but if a
+    # reindex swap can't remove the old directory (see below), the freshly
+    # built temp index becomes the live one until the next successful swap
+    # can restore the canonical location.
+    live_dir = PERSIST_DIR
+
     print("\n" + "=" * 60)
     print(f"System Ready! ({doc_count} documents indexed)")
-    print(" Model routing:")
-    print(f"  - RAG: {RAG_MODEL} ({RAG_PROVIDER})")
-    print(f"  - summarize: map {MAP_MODEL} ({MAP_PROVIDER}) -> reduce {REDUCE_MODEL} ({REDUCE_PROVIDER}) -> synthesis {SYNTHESIS_MODEL} ({SYNTHESIS_PROVIDER})")
-    print(f"  - embeddings: {EMBED_MODEL} ({EMBED_PROVIDER})")
     print(" - Ask normal questions: 'What is the main methodology?'")
     print(" - Ask about specific pages: 'What does page 5 say?' or 'compare page 10 and page 23'")
     print(" - Mention a numbered file directly: 'summarize journal5' (auto-detected)")
-    print(" - Or a publication year: 'what does the 2021 paper say' (extracted from each PDF's front matter)")
+    print(" - Or a publication year: 'what does the 2021 paper say' (extracted from each document's front matter)")
     print(" - Or target explicitly: 'filter: filename.pdf | your question'")
     print("   (also accepts a year or jurisdiction: 'filter: 2021 | ...', 'filter: australia | ...')")
     print(" - Prefix with 'broad:' for a wide, diverse sweep instead of a focused lookup")
@@ -429,6 +438,13 @@ def main():
                 # Build into a temp directory FIRST, and only touch the
                 # live index once that build has actually succeeded.
                 tmp_dir = PERSIST_DIR.rstrip("/\\") + "_rebuilding"
+                if os.path.normcase(os.path.abspath(tmp_dir)) == os.path.normcase(os.path.abspath(live_dir)):
+                    # The live index IS the temp directory (an earlier
+                    # swap couldn't remove the old one and we've been
+                    # using the temp index since). Building into that same
+                    # directory would destroy the index currently
+                    # answering questions - use a non-colliding name.
+                    tmp_dir = PERSIST_DIR.rstrip("/\\") + "_rebuilding2"
                 _safe_rmtree(tmp_dir)  # leftovers from a previously interrupted reindex, if any
 
                 print(f"\nBuilding a fresh index at '{tmp_dir}'; your current index stays live until this succeeds...")
@@ -441,32 +457,59 @@ def main():
                     continue
 
                 if new_vectorstore is None:
-                    print(f"\nNo PDF files found in '{DOC_FOLDER}' - nothing to index. Existing index left untouched.")
+                    print(f"\nNo documents found in '{DOC_FOLDER}' - nothing to index. Existing index left untouched.")
                     _safe_rmtree(tmp_dir)
                     continue
 
                 # Build succeeded - now it's safe to retire the old index.
-                # Drop references to the old Chroma client and HybridIndex
-                # so the SQLite file isn't still open when we try to remove it.
+                # Close the old Chroma client BEFORE deleting anything:
+                # Client.close() stops the shared System singleton and
+                # releases chroma.sqlite3/segment file handles, so the
+                # rmtree below actually succeeds (see _close_chroma_client).
+                _close_chroma_client(vectorstore)
                 del vectorstore
                 del hybrid_index
                 gc.collect()
-                
-                try:
-                    import chromadb
-                    chromadb.api.client.SharedSystemClient.clear_system_cache()
-                except Exception:
-                    pass
 
-                if not _safe_rmtree(PERSIST_DIR):
-                    print(f"\nCouldn't fully remove the old index at '{PERSIST_DIR}' - a file may still be locked.")
+                if not _safe_rmtree(live_dir):
+                    print(f"\nCouldn't fully remove the old index at '{live_dir}' - a file may still be locked.")
                     print(f"The NEW index built fine and is sitting at '{tmp_dir}'. We'll use it for this session.")
-                    print(f"To make it permanent, close the program, delete '{PERSIST_DIR}' and rename")
+                    print(f"To make it permanent, close the program, delete '{live_dir}' and rename")
                     print(f"'{tmp_dir}' to '{PERSIST_DIR}', then restart.")
                     vectorstore = new_vectorstore
+                    live_dir = tmp_dir
                 else:
-                    shutil.move(tmp_dir, PERSIST_DIR)
-                    vectorstore = Chroma(persist_directory=PERSIST_DIR, embedding_function=embeddings)
+                    final_dir = PERSIST_DIR
+                    if os.path.exists(final_dir):
+                        # Stale original directory from an earlier failed
+                        # swap - no longer live, so try to clear it too
+                        # and restore the canonical location.
+                        _safe_rmtree(final_dir)
+                    if os.path.exists(final_dir):
+                        final_dir = live_dir
+                        print(f"\nNote: '{PERSIST_DIR}' still couldn't be removed, so the rebuilt index")
+                        print(f"was placed at '{final_dir}' instead.")
+                    try:
+                        # Close the temp-dir client BEFORE the move: on
+                        # Windows, renaming a directory fails with
+                        # "Access is denied" while any file inside it is
+                        # still open (tested: shutil.move on a directory
+                        # holding an open chroma.sqlite3/data_level0.bin).
+                        _close_chroma_client(new_vectorstore)
+                        shutil.move(tmp_dir, final_dir)
+                        vectorstore = Chroma(persist_directory=final_dir, embedding_function=embeddings)
+                        live_dir = final_dir
+                    except Exception as e:
+                        print(f"\n[warning] Couldn't move the rebuilt index into place ({e}); using it from '{tmp_dir}' for this session.")
+                        print(f"To make it permanent, close the program, delete '{live_dir}' and rename")
+                        print(f"'{tmp_dir}' to '{PERSIST_DIR}', then restart.")
+                        try:
+                            # The temp client was already closed above, so
+                            # reopen it fresh at its current location.
+                            vectorstore = Chroma(persist_directory=tmp_dir, embedding_function=embeddings)
+                        except Exception:
+                            vectorstore = new_vectorstore
+                        live_dir = tmp_dir
 
                 hybrid_index = HybridIndex(vectorstore)
                 hybrid_index.refresh_bm25()
