@@ -12,8 +12,8 @@ Local RAG assistant over your PDF library, running entirely against a local Olla
 
 ### 1. Clone or download the repository
 ```bash
-git clone <your-repo-url>
-cd thesis-rag-assistant
+git clone [<your-repo-url>](https://github.com/Vtolin/Local-Academic-Research-Assistant/blob/main/README.md)
+cd local-academic-research-assistant
 ```
 
 ### 2. Choose your Python environment
