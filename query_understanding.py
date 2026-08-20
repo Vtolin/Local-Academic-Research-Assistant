@@ -87,6 +87,7 @@ class QueryPlan:
     broad_mode: bool = False
     page_numbers: list = field(default_factory=list)     # 0-indexed
     invalid_pages: list = field(default_factory=list)
+    export_pdf: bool = False                # 'summarize: X pdf' - also export the summary as a PDF
     intent: Intent = Intent.FACTUAL
 
 
@@ -103,6 +104,11 @@ def parse_query(user_input: str) -> QueryPlan:
     text, and 'broad:' is stripped next so it can never leak into the
     implicit-filter scan or the final prompt.
 
+    'summarize: X' also accepts a trailing 'pdf' suffix ('summarize: X pdf',
+    '... as pdf', '... to pdf', '... export pdf') which sets the
+    export_pdf flag on the returned plan - the caller then writes the
+    summary to a PDF file in addition to the terminal output.
+
     Raises ValueError on malformed 'filter:'/'compare:' syntax (missing
     '|', or fewer than two comma-separated targets for 'compare:').
     """
@@ -110,10 +116,20 @@ def parse_query(user_input: str) -> QueryPlan:
 
     if query.lower().startswith("summarize:"):
         target = query[len("summarize:"):].strip()
+        # Optional export suffix: 'summarize: journal5 pdf' (also 'as pdf',
+        # 'to pdf', 'export pdf'). Only stripped when 'pdf' is a standalone
+        # trailing token, so a document actually named '... pdf' isn't
+        # silently mangled unless you write the suffix with a separator.
+        export_pdf = False
+        m = re.search(r"\s+(?:as\s+|to\s+|export\s*:?\s*)?pdf\s*$", target, re.IGNORECASE)
+        if m:
+            target = target[:m.start()].strip()
+            export_pdf = True
         return QueryPlan(
             raw_input=user_input,
             query=target,
             filter_doc=target or None,
+            export_pdf=export_pdf,
             intent=Intent.SUMMARIZE,
         )
 
