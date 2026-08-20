@@ -3,6 +3,12 @@
 
 Local RAG assistant over your PDF/DOCX library, running entirely against a local Ollama instance. Hybrid BM25+vector retrieval, cross-encoder re-ranking, section/pinpoint/year/jurisdiction extraction, whole‑document summarization, cross‑source comparison with conflict detection, toggleable conversation memory, and an automatic research trail.
 
+> **Disclaimer**
+>
+> This is a **research assistant, not legal advice**. It is not a substitute for a qualified legal professional, and no output of this tool should be treated as legal counsel or relied upon for any legal decision.
+>
+> AI-generated answers and summaries can be wrong, incomplete, or out of date. **Always verify every output against the original source documents** before using it for academic, legal, or professional work. The verbatim-extracted sections (statistics, tables, citations) are copied directly from your documents, but everything else is model-generated.
+
 ## Setup
 
 ### Requirements 
@@ -111,6 +117,7 @@ All tunable parameters live in `config.py`. Key settings:
 - **Table data:** `summarize:` now appends an "Extracted Table Data (Verbatim)" section - real tables are captured deterministically from the PDF layout (no model involvement, so cell values can't hallucinate) and rendered as markdown. One-row fragments, garbage tables, and oversized tables are filtered/capped with explicit notes.
 - **Degraded layout safety net:** pages whose extraction alternates between two columns are indexed (keyword search still works) but tagged `layout_warning`; whole‑document summaries exclude those chunks, and Q&A context flags them, rather than feeding interleaved half‑sentences to the models. If a whole document is flagged, `summarize:` reports it instead of producing garbage - but verbatim tables from those pages are still extracted (find_tables clusters cells by position, recovering structure the raw line order lost).
 - **Ollama must be running** before you start the assistant. The system expects the default `http://localhost:11434`.
+- **Verify outputs:** this is a research assistant, not legal advice — AI answers can be wrong. Always check generated answers and summaries against the original source documents (see the disclaimer at the top).
 - **Reindex after major updates:** If you update the code (especially ingestion or metadata extraction), run `reindex` from the prompt to rebuild the vector store with the new logic.
 - **Citation format:** Currently style‑agnostic (`filename, Page N, ¶ 42 (Section; Jurisdiction; Year)`). You can change the format in `research_trail.py` (`format_citation`).
 - **Memory usage:** The 14B synthesis model may be heavy. Reduce `SYNTHESIS_MODEL` to `qwen2.5:7b` (or smaller) if you encounter out‑of‑memory errors or slow generations.
