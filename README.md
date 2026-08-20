@@ -107,6 +107,8 @@ All tunable parameters live in `config.py`. Key settings:
 ## Important Notes
 
 - **flashrank model download:** The cross‑encoder model is downloaded from Hugging Face on first rerank. Ensure internet access and sufficient disk space (~500 MB). If it fails, retrieval continues without reranking (a warning is printed).
+- **Table data:** `summarize:` now appends an "Extracted Table Data (Verbatim)" section - real tables are captured deterministically from the PDF layout (no model involvement, so cell values can't hallucinate) and rendered as markdown. One-row fragments, garbage tables, and oversized tables are filtered/capped with explicit notes.
+- **Degraded layout safety net:** pages whose extraction alternates between two columns are indexed (keyword search still works) but tagged `layout_warning`; whole‑document summaries exclude those chunks, and Q&A context flags them, rather than feeding interleaved half‑sentences to the models. If a whole document is flagged, `summarize:` reports it instead of producing garbage - but verbatim tables from those pages are still extracted (find_tables clusters cells by position, recovering structure the raw line order lost).
 - **Ollama must be running** before you start the assistant. The system expects the default `http://localhost:11434`.
 - **Reindex after major updates:** If you update the code (especially ingestion or metadata extraction), run `reindex` from the prompt to rebuild the vector store with the new logic.
 - **Citation format:** Currently style‑agnostic (`filename, Page N, ¶ 42 (Section; Jurisdiction; Year)`). You can change the format in `research_trail.py` (`format_citation`).
@@ -121,6 +123,8 @@ All tunable parameters live in `config.py`. Key settings:
 | `ModuleNotFoundError` | Check that you activated the virtual environment and installed requirements. |
 | `Ollama connection refused` | Ensure Ollama is running (`ollama serve` or check system tray). |
 | Embedding errors during indexing | Some documents may contain malformed characters. The system skips bad chunks; check the warning messages. |
+| `[warning] ... dropped N segment(s) with suspected corrupted/garbage text` | A safety net caught corrupted-font garbage during ingestion. Those segments are excluded from the index - nothing to do unless you expected that text. |
+| `[warning] ... page(s) N suspected interleaved multi-column layout` | Those pages' text alternates between columns. They stay searchable, but summaries exclude them (safety net) - see the "Degraded layout" note below. |
 | `Error finding id` during retrieval | This is a Chroma/HNSW issue when requesting more results than available. The system caps `k` automatically when a filter is active. If you still see it, reduce `SIMILARITY_K` or `BROAD_K`. |
 | `flashrank` download fails | Check your internet connection and proxy settings. You can also download the model manually and point `RERANK_CACHE_DIR` to the local folder. |
 | Out‑of‑memory (OOM) | Lower the context windows in `config.py` (e.g., `NUM_CTX=8192`), use smaller models, or enable CPU offloading in Ollama. |
@@ -134,7 +138,9 @@ All tunable parameters live in `config.py`. Key settings:
 | `config.py` | All tunable constants, grouped by pipeline stage |
 | `query_understanding.py` | Intent classification (page/broad/summarize/compare/factual) |
 | `filters.py` | Filename, year, and jurisdiction filter resolution |
-| `heading_detection.py` | Section heading detection (font size/boldness) |
+| `heading_detection.py` | Section heading detection (font size/boldness) + interleaved multi-column page detection |
+| `content_quality.py` | Garbage-text scoring (corrupted-PDF safety net) |
+| `table_extraction.py` | Deterministic verbatim table capture via PyMuPDF `find_tables` (no Java dependency) |
 | `metadata_extraction.py` | Publication‑year extraction |
 | `jurisdiction_extraction.py` | Jurisdiction/court extraction (keyword patterns, incl. Indonesian courts) |
 | `pinpoint_detection.py` | Pinpoint citation detection (¶ markers, Pasal/ayat/huruf, jo./juncto chains) |
