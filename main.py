@@ -188,6 +188,8 @@ def handle_summarize(plan, vectorstore, doc_map, doc_years, doc_jurisdictions, d
         }
         if stats.get("table_rows_filtered"):
             details["Table rows excluded"] = stats["table_rows_filtered"]
+        if stats.get("table_count"):
+            details["Tables extracted"] = stats["table_count"]
         total = stats.get("total_seconds")
         if total:
             details["Time"] = f"{int(total // 60)}m {int(total % 60):02d}s"
