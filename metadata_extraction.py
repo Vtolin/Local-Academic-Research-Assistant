@@ -4,19 +4,28 @@ Publication-year extraction (best-effort metadata for filtering).
 Sequential filenames like journal4.pdf don't encode publication year, but
 an academic PDF's front matter usually does - a copyright line, a
 "Received/Accepted" date, a DOI stamp, volume/issue info. This scans the
-first couple of pages for 4-digit years in a plausible range and scores
-each occurrence by proximity to keywords that typically accompany a real
-publication date, so a copyright-line year outranks an arbitrary year
-mentioned in body text or buried in a references list.
+first couple of pages for 4-digit years and scores each occurrence by
+proximity to keywords that typically accompany a real publication date,
+so a copyright-line year outranks an arbitrary year mentioned in body
+text or buried in a references list.
 
 Best-effort, not bibliographic metadata extraction - it can pick the wrong
 year on documents with unusual front matter, or find nothing at all
 (returns None). Callers treat None as "year unknown" and just skip
 year-based filtering for that document - the same graceful-degradation
 pattern as heading_detection.py's empty section label.
+
+Deliberately NO upper bound on the year: documents can legitimately carry
+future dates (forthcoming/in-press items, future-dated legislation,
+projected dates), and the extraction should report what the document
+says rather than judge plausibility against the extraction runtime's
+clock - a training-cutoff mindset applied to the source corpus would
+silently drop real dates that simply happen to be later than the AI's
+own knowledge. Only the lower bound (1900) is kept, to keep random
+historical 4-digit numbers in running text from masquerading as
+publication years.
 """
 import re
-from datetime import datetime
 
 import pymupdf as fitz  # `fitz` is the old import name; PyMuPDF now ships
                          # it as `pymupdf` and warns on the old name, but
@@ -36,14 +45,11 @@ _PAGES_TO_SCAN = 2
 _PROXIMITY_WINDOW = 60  # chars on each side of a year to look for a signal word
 
 
-def _current_max_year():
-    return datetime.now().year + 1  # tolerate "in press" / forthcoming dates
-
-
 def extract_year(pdf_path):
-    """Best-effort publication year for one PDF, or None if nothing
-    plausible was found (empty document, no 4-digit years on the scanned
-    pages, or a PDF that fails to open)."""
+    """Best-effort publication year for one PDF, or None if nothing was
+    found (empty document, no 4-digit years on the scanned pages, or a
+    PDF that fails to open). Future years are returned as-is - see the
+    module docstring for why there is deliberately no upper bound."""
     try:
         doc = fitz.open(pdf_path)
         text = ""
@@ -53,13 +59,12 @@ def extract_year(pdf_path):
     except Exception:
         return None
 
-    max_year = _current_max_year()
     text_lower = text.lower()
     candidates = []  # (score, position, year) - lower position = earlier on the page
 
     for m in _YEAR_RE.finditer(text):
         year = int(m.group(0))
-        if year < 1900 or year > max_year:
+        if year < 1900:
             continue
         window = text_lower[max(0, m.start() - _PROXIMITY_WINDOW): m.start() + _PROXIMITY_WINDOW]
         if any(sig in window for sig in _STRONG_SIGNALS):
