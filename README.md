@@ -84,6 +84,7 @@ Once ready, you’ll see a prompt. Type `reindex` if you add/remove documents la
 | `filter: filename.pdf \| your question` | Explicit file scope – also accepts a year (`filter: 2021 \| ...`) or jurisdiction (`filter: indonesia \| ...`) |
 | `broad: your question` | Wide, diversity‑optimized sweep |
 | `summarize: journal5` / `summarize: 2021` | Whole‑document summary (stuffing or map‑reduce) |
+| `summarize: journal5 pdf` | Whole‑document summary, also exported as a PDF to `pdf_exports/` |
 | `compare: doc1, doc2 \| your question` | Separate per‑source retrieval + conflict‑aware synthesis |
 | `memory on` / `memory off` / `forget` | Toggle or clear conversation history |
 | `export citations` | Write every source cited this session to `citations_export.txt` |
@@ -141,6 +142,7 @@ All tunable parameters live in `config.py`. Key settings:
 | `heading_detection.py` | Section heading detection (font size/boldness) + interleaved multi-column page detection |
 | `content_quality.py` | Garbage-text scoring (corrupted-PDF safety net) |
 | `table_extraction.py` | Deterministic verbatim table capture via PyMuPDF `find_tables` (no Java dependency) |
+| `pdf_export.py` | Markdown→PDF export of summaries (markdown-it-py + PyMuPDF Story, no new heavy deps) |
 | `metadata_extraction.py` | Publication‑year extraction |
 | `jurisdiction_extraction.py` | Jurisdiction/court extraction (keyword patterns, incl. Indonesian courts) |
 | `pinpoint_detection.py` | Pinpoint citation detection (¶ markers, Pasal/ayat/huruf, jo./juncto chains) |
