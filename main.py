@@ -46,6 +46,7 @@ from filters import resolve_filter, build_source_filter
 from retrieval import HybridIndex, get_chunks_by_pages, sort_docs, Chunk
 from generation import format_docs, format_compare_docs, warn_if_context_too_large, generate_answer
 from summarization import summarize_document
+from pdf_export import export_summary_pdf
 from conversation import ConversationMemory
 from research_trail import ResearchTrail, format_citation
 
@@ -207,6 +208,13 @@ def handle_summarize(plan, vectorstore, doc_map, doc_years, doc_jurisdictions, d
             [Chunk(page_content="", metadata=source_meta)],
             details=details,
         )
+
+        if plan.export_pdf:
+            path = export_summary_pdf(display_name, summary, stats)
+            if path:
+                print(f"\nExported summary as PDF: {path}")
+            else:
+                print("\n[warning] Couldn't export the summary as PDF.")
 
 
 def handle_compare(plan, vectorstore, hybrid_index, doc_map, doc_years, doc_jurisdictions, memory, trail):
@@ -428,6 +436,7 @@ def main():
     print(" - Prefix with 'broad:' for a wide, diverse sweep instead of a focused lookup")
     print(" - Prefix with 'summarize:' for a whole-document summary (not top-k retrieval)")
     print("   e.g. 'summarize: journal5', 'summarize: journal5.pdf', or 'summarize: 2021'")
+    print("   append 'pdf' to also export the summary as a PDF: 'summarize: journal5 pdf'")
     print(" - Prefix with 'compare:' to compare two+ sources without averaging them")
     print("   e.g. 'compare: caseA, caseB | how do they define proportionality'")
     print(f" - Follow-up questions remember the last {MAX_HISTORY_TURNS} answer(s).")
