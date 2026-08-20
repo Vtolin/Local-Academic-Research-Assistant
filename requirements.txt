@@ -12,7 +12,7 @@ langchain-chroma
 langchain-ollama
 chromadb
 pymupdf
-rank-bm25=
+rank-bm25
 flashrank
 tiktoken
 markdown-it-py
