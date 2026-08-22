@@ -18,7 +18,7 @@ Local RAG assistant over your PDF/DOCX library, running entirely against a local
 
 ### 1. Clone or download the repository
 ```bash
-git clone https://github.com/Vtolin/Local-Academic-Research-Assistant.git
+git clone https://github.com/Vtolin/Local-Academic-Research-Assistant
 cd local-academic-research-assistant
 ```
 
