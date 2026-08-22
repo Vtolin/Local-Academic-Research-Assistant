@@ -45,7 +45,7 @@ The system uses two models (configurable in `config.py`):
 - **Embedding model:** `nomic-embed-text`
 - **Extraction model (fast but not as accurate as larger models, 4B):** `qwen3.5:4b` - you can also use `qwen2.5:7b` (reccomended) if you have atleast 8gb vram (can run on 6gb but may be slower)
 - **Synthesis model (quite heavy if you have less than 6gb vram, 7B):** `qwen2.5:7b` – you can also use `qwen3:14b` (12gb vram recommended, if you have 8gb then you can use 7B or sacrifice speed with partial offloading) if your hardware allows (adjust `SYNTHESIS_MODEL` in `config.py`).
-**Note**: Consider using the Gemma 4 26B MoE model for synthesis if you have 32gb unified memory/32gb DDR5 Ram with 6-8gb VRAM. 
+- **Note**: Consider using the Gemma 4 26B MoE model for synthesis if you have 32gb unified memory/32gb DDR5 Ram with 6-8gb VRAM. 
 
 Pull them:
 ```bash
